@@ -1,0 +1,7 @@
+# .terraform.lock.hcl
+# .terraform/
+# errored.tfstate
+
+.terraform*
+*.tfstate
+
