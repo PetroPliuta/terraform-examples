@@ -18,6 +18,7 @@ sudo -u ghost_user ghost install local
 
 ### EFS mount
 mkdir -p /home/ghost_user/ghost/content
+sudo pip3 install botocore
 mount -t efs -o tls $EFS_ID:/ /home/ghost_user/ghost/content
 
 cat << EOF > config.development.json

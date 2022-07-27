@@ -436,12 +436,20 @@ resource "aws_autoscaling_group" "ghost_ec2_pool" {
 
   target_group_arns = [aws_lb_target_group.ghost-ec2.arn]
 
+  health_check_grace_period = 180
+  health_check_type         = "ELB"
+
   instance_refresh {
     strategy = "Rolling"
     preferences {
       min_healthy_percentage = 50
     }
   }
+  depends_on = [
+    aws_efs_mount_target.a,
+    aws_efs_mount_target.b,
+    aws_efs_mount_target.c,
+  ]
 }
 
 # aws_autoscaling_attachment
@@ -461,4 +469,12 @@ resource "aws_instance" "bastion" {
   tags = {
     "Name" = "bastion"
   }
+}
+
+data "aws_instances" "asg_instances" {
+  instance_state_names = ["pending", "running"]
+  instance_tags = {
+    "aws:autoscaling:groupName" = aws_autoscaling_group.ghost_ec2_pool.name
+  }
+  # aws:autoscaling:groupName	ghost_ec2_pool
 }
