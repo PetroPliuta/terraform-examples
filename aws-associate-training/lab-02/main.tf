@@ -419,11 +419,29 @@ resource "aws_launch_template" "ghost" {
 
 
 # Auto-scaling group
+
 # aws_autoscaling_group
 #Create Auto-scaling group and assign it with Launch Template from step 5:
 #name=ghost_ec2_pool
 #avalability zone=a,b,c
 #Attach ASG with {ghost-ec2} target group
+
+# https://docs.aws.amazon.com/efs/latest/ug/troubleshooting-efs-mounting.html#mount-fails-propegation
+# Q: File System Mount Fails Immediately After File System Creation
+# A: It can take up to 90 seconds after creating a mount target for 
+# the Domain Name Service (DNS) records to propagate fully in an AWS Region.
+
+# Action to take
+# If you're programmatically creating and mounting file systems, 
+# for example with an AWS CloudFormation template, we recommend that you implement a wait condition.
+resource "time_sleep" "wait_efs_mount_target_dns_records_to_propagate" {
+  create_duration = "90s"
+  depends_on = [
+    aws_efs_mount_target.a,
+    aws_efs_mount_target.b,
+    aws_efs_mount_target.c,
+  ]
+}
 resource "aws_autoscaling_group" "ghost_ec2_pool" {
   name = "ghost_ec2_pool"
   launch_template {
@@ -446,9 +464,7 @@ resource "aws_autoscaling_group" "ghost_ec2_pool" {
     }
   }
   depends_on = [
-    aws_efs_mount_target.a,
-    aws_efs_mount_target.b,
-    aws_efs_mount_target.c,
+    time_sleep.wait_efs_mount_target_dns_records_to_propagate
   ]
 }
 
