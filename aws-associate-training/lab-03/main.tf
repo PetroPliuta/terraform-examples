@@ -440,7 +440,7 @@ resource "aws_autoscaling_group" "ghost_ec2_pool" {
   }
   depends_on = [
     time_sleep.wait_efs_mount_target_dns_records_to_propagate,
-    aws_db_instance.ghost,
+    # aws_db_instance.ghost,
     # instance user_data script reads load balancer DNS name
     aws_lb.ghost-app
   ]
