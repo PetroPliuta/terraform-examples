@@ -10,8 +10,6 @@ provider "aws" {
   }
 }
 
-# Use data construction for templates and scripts.
-# Use output construction to accumulate data.
 
 # Network stack
 
@@ -54,12 +52,14 @@ resource "aws_subnet" "public_c" {
     "Name" = "public_c"
   }
 }
+
 resource "aws_internet_gateway" "cloudx-igw" {
   vpc_id = aws_vpc.cloudx.id
   tags = {
     "Name" = "cloudx-igw"
   }
 }
+
 resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.cloudx.id
   route {
@@ -70,6 +70,7 @@ resource "aws_route_table" "public_rt" {
     "Name" = "public_rt"
   }
 }
+
 resource "aws_route_table_association" "a" {
   subnet_id      = aws_subnet.public_a.id
   route_table_id = aws_route_table.public_rt.id
@@ -86,9 +87,6 @@ resource "aws_route_table_association" "c" {
 
 # Security groups
 
-# name=bastion, description="allows access to bastion":
-# ingress rule_1: port=22, source={your_ip}, protocol=tcp
-# egress rule_1: allows any destination
 resource "aws_security_group" "bastion" {
   name        = "bastion"
   description = "allows access to bastion"
@@ -114,12 +112,6 @@ resource "aws_security_group" "bastion" {
     "Name" = "bastion"
   }
 }
-
-# name=ec2_pool, description="allows access to ec2 instances":
-# ingress rule_1: port=22, source_security_group={bastion}, protocol=tcp
-# ingress rule_2: port=2049, source={vpc_cidr}, protocol=tcp
-# ingress rule_3: port=2368, source_security_group={alb}, protocol=tcp
-# egress rule_1: allows any destination
 resource "aws_security_group" "ec2_pool" {
   name        = "ec2_pool"
   description = "allows access to ec2 instances"
@@ -166,9 +158,6 @@ resource "aws_security_group_rule" "rule_1e" {
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
-# name=alb, description="allows access to alb":
-# ingress rule_1: port=80, source={your_ip}, protocol=tcp
-# egress rule_1: port=any, source_security_group={ec2_pool}, protocol=any
 resource "aws_security_group" "alb" {
   name        = "alb"
   description = "allows access to alb"
@@ -194,10 +183,6 @@ resource "aws_security_group" "alb" {
     "Name" = "alb"
   }
 }
-
-# name=efs, description="defines access to efs mount points":
-# ingress rule_1: port=2049, source_security_group={ec2_pool}, protocol=tcp
-# egress rule_1: allows any destination to {vpc_cidr}
 resource "aws_security_group" "efs" {
   name        = "efs"
   description = "defines access to efs mount points"
@@ -226,6 +211,7 @@ resource "aws_security_group" "efs" {
 
 
 # SSH Key pair
+
 resource "aws_key_pair" "ghost-ec2-pool" {
   public_key = var.ssh-key
   key_name   = "ghost-ec2-pool"
@@ -235,7 +221,8 @@ resource "aws_key_pair" "ghost-ec2-pool" {
 }
 
 
-# IAM role
+# IAM
+
 resource "aws_iam_policy" "ghost_app" {
   name = "ghost_app"
   policy = jsonencode({
@@ -246,7 +233,12 @@ resource "aws_iam_policy" "ghost_app" {
           "ec2:Describe*",
           "elasticfilesystem:DescribeFileSystems",
           "elasticfilesystem:ClientMount",
-          "elasticfilesystem:ClientWrite"
+          "elasticfilesystem:ClientWrite",
+          "ssm:GetParameter*",
+          "secretsmanager:GetSecretValue",
+          "kms:Decrypt",
+          "rds:DescribeDBInstances",
+          "elasticloadbalancing:DescribeLoadBalancers"
         ]
         Effect   = "Allow"
         Resource = "*"
@@ -317,10 +309,6 @@ resource "aws_efs_mount_target" "c" {
 
 # Application load balancer
 
-# aws_lb
-# aws_lb_target_group
-# aws_lb_listener
-# aws_lb_listener_rule
 resource "aws_lb" "ghost-app" {
   name               = "ghost-app"
   load_balancer_type = "application"
@@ -328,19 +316,16 @@ resource "aws_lb" "ghost-app" {
   subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id, aws_subnet.public_c.id]
 }
 
-# Create Application Load Balancer with 1 target group:
-# target group 1: name=ghost-ec2,port=2368,protocol="HTTP"
 resource "aws_lb_target_group" "ghost-ec2" {
   name     = "ghost-ec2"
   port     = 2368
   protocol = "HTTP"
   vpc_id   = aws_vpc.cloudx.id
   health_check {
-    # healthy_threshold = 3
-    # unhealthy_threshold = 3
-    timeout = 5
-
-    interval = 6
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 6
   }
 
   tags = {
@@ -348,8 +333,6 @@ resource "aws_lb_target_group" "ghost-ec2" {
   }
 }
 
-# Create ALB listener: port=80,protocol="HTTP", avalability zone=a,b,c
-# Edit ALB listener rule: action type = "forward",target_group_1_weight=100
 resource "aws_lb_listener" "ghost-ec2" {
   load_balancer_arn = aws_lb.ghost-app.arn
   port              = 80
@@ -398,7 +381,6 @@ data "local_file" "ghost-init-script" {
   filename = "${path.module}/ghost-init-script.sh"
 }
 
-
 resource "aws_launch_template" "ghost" {
   name = "ghost"
   iam_instance_profile {
@@ -412,19 +394,12 @@ resource "aws_launch_template" "ghost" {
     delete_on_termination       = true
     security_groups             = [aws_security_group.ec2_pool.id]
   }
-  #   vpc_security_group_ids = [aws_security_group.ec2_pool.id]
 
   user_data = data.local_file.ghost-init-script.content_base64
 }
 
 
 # Auto-scaling group
-
-# aws_autoscaling_group
-#Create Auto-scaling group and assign it with Launch Template from step 5:
-#name=ghost_ec2_pool
-#avalability zone=a,b,c
-#Attach ASG with {ghost-ec2} target group
 
 # https://docs.aws.amazon.com/efs/latest/ug/troubleshooting-efs-mounting.html#mount-fails-propegation
 # Q: File System Mount Fails Immediately After File System Creation
@@ -464,24 +439,23 @@ resource "aws_autoscaling_group" "ghost_ec2_pool" {
     }
   }
   depends_on = [
-    time_sleep.wait_efs_mount_target_dns_records_to_propagate
+    time_sleep.wait_efs_mount_target_dns_records_to_propagate,
+    aws_db_instance.ghost,
+    # instance user_data script reads load balancer DNS name
+    aws_lb.ghost-app
   ]
 }
 
-# aws_autoscaling_attachment
-
 
 # Bastion
-# aws_instance
 
 resource "aws_instance" "bastion" {
   ami                         = data.aws_ami.amazon2-linux-latest.id
   associate_public_ip_address = true
-  #   availability_zone = "us-east-1a"
-  instance_type          = "t2.micro"
-  key_name               = aws_key_pair.ghost-ec2-pool.key_name
-  subnet_id              = aws_subnet.public_a.id
-  vpc_security_group_ids = [aws_security_group.bastion.id]
+  instance_type               = "t2.micro"
+  key_name                    = aws_key_pair.ghost-ec2-pool.key_name
+  subnet_id                   = aws_subnet.public_a.id
+  vpc_security_group_ids      = [aws_security_group.bastion.id]
   tags = {
     "Name" = "bastion"
   }
@@ -492,17 +466,11 @@ data "aws_instances" "asg_instances" {
   instance_tags = {
     "aws:autoscaling:groupName" = aws_autoscaling_group.ghost_ec2_pool.name
   }
-  # aws:autoscaling:groupName	ghost_ec2_pool
 }
+
 
 # DB RDS
 
-# 1 - Add private subnets for DB
-# 3 x Database subnets(private):
-# name=private_db_a, cidr=10.10.20.0/24, az=a
-# name=private_db_b, cidr=10.10.21.0/24, az=b
-# name=private_db_c, cidr=10.10.22.0/24, az=c
-# Routing table and attach it with the Private subnets (name=private_rt)
 resource "aws_subnet" "private_db_a" {
   vpc_id            = aws_vpc.cloudx.id
   cidr_block        = "10.10.20.0/24"
@@ -527,6 +495,73 @@ resource "aws_subnet" "private_db_c" {
     Name = "private_db_c"
   }
 }
-# resource "aws_db_subnet_group" "name" {
 
-# }
+resource "aws_route_table" "private_rt" {
+  vpc_id = aws_vpc.cloudx.id
+}
+
+resource "aws_route_table_association" "private_rt_a" {
+  subnet_id      = aws_subnet.private_db_a.id
+  route_table_id = aws_route_table.private_rt.id
+}
+resource "aws_route_table_association" "private_rt_b" {
+  subnet_id      = aws_subnet.private_db_b.id
+  route_table_id = aws_route_table.private_rt.id
+}
+resource "aws_route_table_association" "private_rt_c" {
+  subnet_id      = aws_subnet.private_db_c.id
+  route_table_id = aws_route_table.private_rt.id
+}
+
+resource "aws_security_group" "mysql" {
+  vpc_id      = aws_vpc.cloudx.id
+  name        = "mysql"
+  description = "defines access to ghost db"
+  ingress {
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ec2_pool.id]
+  }
+  lifecycle {
+    # Necessary if changing 'name' or 'name_prefix' properties.
+    create_before_destroy = true
+  }
+
+  tags = {
+    "Name" = "mysql"
+  }
+}
+
+resource "aws_db_subnet_group" "ghost" {
+  name        = "ghost"
+  description = "ghost database subnet group"
+  subnet_ids  = [aws_subnet.private_db_a.id, aws_subnet.private_db_b.id, aws_subnet.private_db_c.id]
+  tags = {
+    "Name" = "ghost"
+  }
+}
+
+resource "aws_db_instance" "ghost" {
+  identifier     = "ghost"
+  instance_class = "db.t2.micro"
+
+  allocated_storage           = 20
+  allow_major_version_upgrade = true
+  apply_immediately           = true
+  db_name                     = "ghost"
+  db_subnet_group_name        = aws_db_subnet_group.ghost.name
+  engine                      = "mysql"
+  engine_version              = "8.0"
+  skip_final_snapshot         = true
+  username                    = "awsuser"
+  password                    = aws_ssm_parameter.db_password.value
+  vpc_security_group_ids      = [aws_security_group.mysql.id]
+
+}
+
+resource "aws_ssm_parameter" "db_password" {
+  name  = "/ghost/dbpassw"
+  type  = "SecureString"
+  value = var.database_master_password
+}
