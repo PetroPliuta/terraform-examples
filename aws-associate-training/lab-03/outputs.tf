@@ -7,4 +7,6 @@ output "bastion_ssh" {
 output "asg_instances_ssh" {
   value = [for s in data.aws_instances.asg_instances.private_ips: "ssh -J ec2-user@${aws_instance.bastion.public_ip} ec2-user@${s}"]
 }
-
+output "db_host" {
+  value = aws_db_instance.ghost.endpoint
+}

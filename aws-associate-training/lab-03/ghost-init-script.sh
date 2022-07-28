@@ -14,7 +14,7 @@ DB_USER="awsuser"
 LB_DNS_NAME=$(aws elbv2 describe-load-balancers --region us-east-1 --query 'LoadBalancers[?LoadBalancerName==`ghost-app`]'.DNSName --output text)
 
 ### Install pre-reqs
-curl -sL https://rpm.nodesource.com/setup_14.x | sudo bash -
+curl -sL https://rpm.nodesource.com/setup_16.x | sudo bash -
 sudo yum install -y nodejs amazon-efs-utils
 sudo npm install ghost-cli@latest -g
 
