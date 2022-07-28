@@ -408,7 +408,7 @@ resource "aws_launch_template" "ghost" {
 
 # Action to take
 # If you're programmatically creating and mounting file systems, 
-# for example with an AWS CloudFormation template, we recommend that you implement a wait condition.
+# # for example with an AWS CloudFormation template, we recommend that you implement a wait condition.
 resource "time_sleep" "wait_efs_mount_target_dns_records_to_propagate" {
   create_duration = "90s"
   depends_on = [
@@ -440,7 +440,7 @@ resource "aws_autoscaling_group" "ghost_ec2_pool" {
   }
   depends_on = [
     time_sleep.wait_efs_mount_target_dns_records_to_propagate,
-    # aws_db_instance.ghost,
+    aws_db_instance.ghost,
     # instance user_data script reads load balancer DNS name
     aws_lb.ghost-app
   ]
@@ -565,3 +565,5 @@ resource "aws_ssm_parameter" "db_password" {
   type  = "SecureString"
   value = var.database_master_password
 }
+
+# aws --profile acloudguru elbv2 describe-target-health --target-group-arn $(aws --profile acloudguru elbv2 describe-target-groups --query 'TargetGroups[].TargetGroupArn' --output text) --query 'TargetHealthDescriptions[].TargetHealth.State'
