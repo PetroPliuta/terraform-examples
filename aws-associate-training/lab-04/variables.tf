@@ -6,3 +6,16 @@ variable "database_master_password" {
   type    = string
   default = ""
 }
+# ECR_IMAGE, DB_NAME, DB_USER, DB_URL
+variable "ecr_image" {
+  type = string
+  default = "ghost:4.12"
+}
+variable "db_name" {
+  type = string
+  default = "value"
+}
+variable "db_user" {
+  type = string
+  default = "value"
+}

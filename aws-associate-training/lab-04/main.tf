@@ -332,6 +332,22 @@ resource "aws_lb_target_group" "ghost-ec2" {
     "Name" = "ghost-ec2"
   }
 }
+resource "aws_lb_target_group" "ghost-fargate" {
+  name     = "ghost-fargate"
+  port     = 2368
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.cloudx.id
+  # health_check {
+  #   healthy_threshold   = 3
+  #   unhealthy_threshold = 3
+  #   timeout             = 5
+  #   interval            = 6
+  # }
+
+  tags = {
+    "Name" = "ghost-fargate"
+  }
+}
 
 resource "aws_lb_listener" "ghost-ec2" {
   load_balancer_arn = aws_lb.ghost-app.arn
@@ -339,18 +355,19 @@ resource "aws_lb_listener" "ghost-ec2" {
   protocol          = "HTTP"
 
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.ghost-ec2.arn
+    type = "forward"
+    forward {
+      target_group {
+        arn    = aws_lb_target_group.ghost-ec2.arn
+        weight = 50
+      }
+      target_group {
+        arn    = aws_lb_target_group.ghost-fargate.arn
+        weight = 50
+      }
+    }
   }
 }
-# resource "aws_lb_listener_rule" "ghost-app" {
-#   listener_arn = aws_lb_listener.ghost-ec2.arn
-
-#   action {
-#     type = "forward"
-#     target_group_arn = aws_lb_target_group.ghost-ec2.arn
-#   }
-# }
 
 
 # Launch Template
@@ -611,7 +628,7 @@ resource "aws_route_table_association" "private_rt_c" {
 }
 
 resource "aws_security_group" "fargate_pool" {
-  vpc_id = aws_vpc.cloudx.id
+  vpc_id      = aws_vpc.cloudx.id
   name        = "fargate_pool"
   description = "Allows access for Fargate instances"
 
@@ -648,5 +665,192 @@ resource "aws_ecr_repository" "ghost" {
 }
 
 
+resource "aws_iam_policy" "ghost_ecs" {
+  name = "ghost_ecs"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "elasticfilesystem:DescribeFileSystems",
+          "elasticfilesystem:ClientMount",
+          "elasticfilesystem:ClientWrite"
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      },
+    ]
+  })
+
+  tags = {
+    Name = "ghost_ecs"
+  }
+}
+
+resource "aws_iam_role" "ghost_ecs" {
+  name = "ghost_ecs"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Sid    = ""
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+  managed_policy_arns = [aws_iam_policy.ghost_ecs.arn]
+
+  tags = {
+    Name = "ghost_ecs"
+  }
+}
+
+resource "aws_iam_instance_profile" "ghost_ecs" {
+  name = "ghost_ecs"
+  role = aws_iam_role.ghost_ecs.name
+  tags = {
+    Name = "ghost_ecs"
+  }
+}
+
+
+# VPC endpoints
+
+resource "aws_security_group" "vpc_endpoint" {
+  vpc_id = aws_vpc.cloudx.id
+  name   = "vpc_endpoint"
+  # TODO: add rules
+  ingress {
+    protocol        = "tcp"
+    from_port       = 0
+    to_port         = 0
+    security_groups = [aws_security_group.fargate_pool.id]
+  }
+  # egress {
+  #   protocol = "tcp"
+  #   from_port = 0
+  #   to_port = 0
+  #   security_groups = [aws_security_group.]
+  # }
+  tags = {
+    "Name" = "vpc_endpoint"
+  }
+}
+
+# SSM, ECR, EFS, S3, CloudWatch and CloudWatch logs
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id             = aws_vpc.cloudx.id
+  service_name       = "com.amazonaws.us-east-1.ssm"
+  vpc_endpoint_type  = "Interface"
+  security_group_ids = [aws_security_group.vpc_endpoint.id]
+}
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id             = aws_vpc.cloudx.id
+  service_name       = "com.amazonaws.us-east-1.ecr.api"
+  vpc_endpoint_type  = "Interface"
+  security_group_ids = [aws_security_group.vpc_endpoint.id]
+}
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id             = aws_vpc.cloudx.id
+  service_name       = "com.amazonaws.us-east-1.ecr.dkr"
+  vpc_endpoint_type  = "Interface"
+  security_group_ids = [aws_security_group.vpc_endpoint.id]
+}
+resource "aws_vpc_endpoint" "efs" {
+  vpc_id             = aws_vpc.cloudx.id
+  service_name       = "com.amazonaws.us-east-1.elasticfilesystem"
+  vpc_endpoint_type  = "Interface"
+  security_group_ids = [aws_security_group.vpc_endpoint.id]
+}
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id       = aws_vpc.cloudx.id
+  service_name = "com.amazonaws.us-east-1.s3"
+  # vpc_endpoint_type = "Interface"
+  # security_group_ids = [aws_security_group.vpc_endpoint.id]
+  route_table_ids = [aws_route_table.private_rt.id]
+}
+resource "aws_vpc_endpoint" "cloudwatch" {
+  vpc_id             = aws_vpc.cloudx.id
+  service_name       = "com.amazonaws.us-east-1.monitoring"
+  vpc_endpoint_type  = "Interface"
+  security_group_ids = [aws_security_group.vpc_endpoint.id]
+}
+resource "aws_vpc_endpoint" "cloudwatch_logs" {
+  vpc_id             = aws_vpc.cloudx.id
+  service_name       = "com.amazonaws.us-east-1.logs"
+  vpc_endpoint_type  = "Interface"
+  security_group_ids = [aws_security_group.vpc_endpoint.id]
+}
+
+
+# ECS cluster
+
+resource "aws_ecs_cluster" "ghost" {
+  name = "ghost"
+
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+  tags = {
+    "Name" = "ghost"
+  }
+}
+
+resource "aws_ecs_task_definition" "task_def_ghost" {
+  family                   = "task_def_ghost"
+  requires_compatibilities = ["FARGATE"]
+  task_role_arn            = aws_iam_role.ghost_ecs.arn
+  execution_role_arn       = aws_iam_role.ghost_ecs.arn
+  network_mode             = "awsvpc"
+  memory                   = 1024
+  cpu                      = 256
+  volume {
+    name = "ghost_volume"
+    efs_volume_configuration {
+      file_system_id = aws_efs_file_system.ghost_content.id
+    }
+  }
+
+  container_definitions = [
+    {
+      "name" : "ghost_container",
+      "image" : "${aws_ecr_repository.ghost.repository_url}/ghost:4.12",
+      "essential" : true,
+      "environment" : [
+        { "name" : "database__client", "value" : "mysql" },
+        { "name" : "database__connection__host", "value" : "${aws_db_instance.ghost.address}" },
+        { "name" : "database__connection__user", "value" : "${aws_db_instance.ghost.username}" },
+        { "name" : "database__connection__password", "value" : "${aws_db_instance.ghost.password}" },
+        { "name" : "database__connection__database", "value" : "${aws_db_instance.ghost.db_name}" }
+      ],
+      "mountPoints" : [
+        {
+          "containerPath" : "/var/lib/ghost/content",
+          "sourceVolume" : "ghost_volume"
+        }
+      ],
+      "portMappings" : [
+        {
+          "containerPort" : 2368,
+          "hostPort" : 2368
+        }
+      ]
+    }
+  ]
+
+  depends_on = [
+    aws_db_instance.ghost,
+    aws_ecr_repository.ghost
+  ]
+}
 # aws --profile acloudguru elbv2 describe-target-health --target-group-arn $(aws --profile acloudguru elbv2 describe-target-groups --query 'TargetGroups[].TargetGroupArn' --output text) --query 'TargetHealthDescriptions[].TargetHealth.State'
 
