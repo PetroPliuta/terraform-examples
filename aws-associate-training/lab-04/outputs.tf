@@ -10,3 +10,6 @@ output "asg_instances_ssh" {
 output "db_host" {
   value = aws_db_instance.ghost.endpoint
 }
+output "docker_repository_url" {
+  value = aws_ecr_repository.ghost.repository_url
+}

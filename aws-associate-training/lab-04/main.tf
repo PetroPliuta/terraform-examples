@@ -317,10 +317,10 @@ resource "aws_lb" "ghost-app" {
 }
 
 resource "aws_lb_target_group" "ghost-ec2" {
-  name     = "ghost-ec2"
-  port     = 2368
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.cloudx.id
+  name_prefix = "ec2"
+  port        = 2368
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.cloudx.id
   health_check {
     healthy_threshold   = 3
     unhealthy_threshold = 3
@@ -328,15 +328,21 @@ resource "aws_lb_target_group" "ghost-ec2" {
     interval            = 6
   }
 
+  lifecycle {
+    create_before_destroy = true
+  }
   tags = {
     "Name" = "ghost-ec2"
   }
 }
 resource "aws_lb_target_group" "ghost-fargate" {
-  name     = "ghost-fargate"
-  port     = 2368
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.cloudx.id
+  name_prefix = "fargat"
+  port        = 2368
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.cloudx.id
+
+  target_type = "ip"
+
   # health_check {
   #   healthy_threshold   = 3
   #   unhealthy_threshold = 3
@@ -344,9 +350,17 @@ resource "aws_lb_target_group" "ghost-fargate" {
   #   interval            = 6
   # }
 
+  lifecycle {
+    create_before_destroy = true
+  }
   tags = {
     "Name" = "ghost-fargate"
   }
+}
+resource "aws_lb_target_group_attachment" "ghost-fargate" {
+  target_group_arn = aws_lb_target_group.ghost-fargate.arn
+  target_id        = aws_lb.ghost-app.id
+  # port             = 80
 }
 
 resource "aws_lb_listener" "ghost-ec2" {
@@ -661,7 +675,8 @@ resource "aws_security_group_rule" "fargate_pool_rule_2" {
 }
 
 resource "aws_ecr_repository" "ghost" {
-  name = "ghost"
+  name         = "ghost"
+  force_delete = true
 }
 
 
@@ -805,6 +820,17 @@ resource "aws_ecs_cluster" "ghost" {
   }
 }
 
+data "template_file" "container_definitions" {
+  template = file("${path.module}/container_definitions.tpl")
+  vars = {
+    ECR_IMAGE = "${aws_ecr_repository.ghost.repository_url}/ghost:4.12"
+    DB_URL    = aws_db_instance.ghost.address
+    DB_NAME   = aws_db_instance.ghost.db_name
+    DB_USER   = aws_db_instance.ghost.username
+    DB_PASS   = var.database_master_password
+  }
+}
+
 resource "aws_ecs_task_definition" "task_def_ghost" {
   family                   = "task_def_ghost"
   requires_compatibilities = ["FARGATE"]
@@ -819,38 +845,31 @@ resource "aws_ecs_task_definition" "task_def_ghost" {
       file_system_id = aws_efs_file_system.ghost_content.id
     }
   }
+  container_definitions = data.template_file.container_definitions.rendered
 
-  container_definitions = [
-    {
-      "name" : "ghost_container",
-      "image" : "${aws_ecr_repository.ghost.repository_url}/ghost:4.12",
-      "essential" : true,
-      "environment" : [
-        { "name" : "database__client", "value" : "mysql" },
-        { "name" : "database__connection__host", "value" : "${aws_db_instance.ghost.address}" },
-        { "name" : "database__connection__user", "value" : "${aws_db_instance.ghost.username}" },
-        { "name" : "database__connection__password", "value" : "${aws_db_instance.ghost.password}" },
-        { "name" : "database__connection__database", "value" : "${aws_db_instance.ghost.db_name}" }
-      ],
-      "mountPoints" : [
-        {
-          "containerPath" : "/var/lib/ghost/content",
-          "sourceVolume" : "ghost_volume"
-        }
-      ],
-      "portMappings" : [
-        {
-          "containerPort" : 2368,
-          "hostPort" : 2368
-        }
-      ]
-    }
-  ]
-
-  depends_on = [
-    aws_db_instance.ghost,
-    aws_ecr_repository.ghost
-  ]
+  # depends_on = [
+  #   aws_db_instance.ghost,
+  #   aws_ecr_repository.ghost
+  # ]
 }
+
+resource "aws_ecs_service" "ghost" {
+  name            = "ghost"
+  cluster         = aws_ecs_cluster.ghost.id
+  task_definition = aws_ecs_task_definition.task_def_ghost.id
+  launch_type     = "FARGATE"
+  desired_count   = 1
+  network_configuration {
+    subnets          = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id]
+    assign_public_ip = false
+    security_groups  = [aws_security_group.fargate_pool.id]
+  }
+  load_balancer {
+    target_group_arn = aws_lb_target_group.ghost-fargate.arn
+    container_name   = "ghost_container"
+    container_port   = 2368
+  }
+}
+
 # aws --profile acloudguru elbv2 describe-target-health --target-group-arn $(aws --profile acloudguru elbv2 describe-target-groups --query 'TargetGroups[].TargetGroupArn' --output text) --query 'TargetHealthDescriptions[].TargetHealth.State'
 
