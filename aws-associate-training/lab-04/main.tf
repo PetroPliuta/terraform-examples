@@ -485,8 +485,8 @@ data "template_file" "bastion_user_data" {
   template = file("${path.module}/bastion-init-script.sh")
   vars = {
     DOCKER_IMAGE = "${aws_ecr_repository.ghost.repository_url}:4.12"
-    REGION = data.aws_region.current.name
-    REGISTRY_ID = aws_ecr_repository.ghost.registry_id
+    REGION       = data.aws_region.current.name
+    REGISTRY_ID  = aws_ecr_repository.ghost.registry_id
   }
 }
 
@@ -499,7 +499,7 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids      = [aws_security_group.bastion.id, aws_security_group.fargate_pool.id]
   iam_instance_profile        = aws_iam_instance_profile.ghost_ecs.id
 
-  user_data = data.template_file.bastion_user_data.rendered
+  user_data                   = data.template_file.bastion_user_data.rendered
   user_data_replace_on_change = true
 
   tags = {
@@ -795,7 +795,7 @@ resource "aws_vpc_endpoint" "ssm" {
 }
 resource "aws_vpc_endpoint" "ecr_api" {
   vpc_id              = aws_vpc.cloudx.id
-  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id]
+  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id, aws_subnet.public_a.id]
   service_name        = "com.amazonaws.us-east-1.ecr.api"
   vpc_endpoint_type   = "Interface"
   security_group_ids  = [aws_security_group.vpc_endpoint.id]
@@ -803,7 +803,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
 }
 resource "aws_vpc_endpoint" "ecr_dkr" {
   vpc_id              = aws_vpc.cloudx.id
-  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id]
+  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id, aws_subnet.public_a.id]
   service_name        = "com.amazonaws.us-east-1.ecr.dkr"
   vpc_endpoint_type   = "Interface"
   security_group_ids  = [aws_security_group.vpc_endpoint.id]
@@ -824,6 +824,7 @@ resource "aws_vpc_endpoint" "s3" {
   # vpc_endpoint_type = "Interface"
   # security_group_ids = [aws_security_group.vpc_endpoint.id]
   # private_dns_enabled = true
+
   route_table_ids = [aws_route_table.private_rt.id]
 }
 resource "aws_vpc_endpoint" "cloudwatch" {
