@@ -57,16 +57,17 @@ cat << EOF > config.development.json
   },
   "process": "local",
   "paths": {
-    "contentPath": "/home/ec2-user/ghost/content"
+    "contentPath": "/home/ec2-user/ghost/content/ec2"
   }
 }
 EOF
 
 sudo -u ec2-user ghost stop
-if [ "$(ls -A /home/ec2-user/ghost/content)" ]; then
+mkdir -p /home/ec2-user/ghost/content/ec2
+if [ "$(ls -A /home/ec2-user/ghost/content/ec2)" ]; then
     rm -rf /home/ec2-user/content/*
 else
-    mv /home/ec2-user/content/* /home/ec2-user/ghost/content
-    chown -vR ec2-user:ec2-user /home/ec2-user/ghost/content/*
+    mv /home/ec2-user/content/* /home/ec2-user/ghost/content/ec2
+    chown -vR ec2-user:ec2-user /home/ec2-user/ghost/content/ec2
 fi 
 sudo -u ec2-user ghost start
