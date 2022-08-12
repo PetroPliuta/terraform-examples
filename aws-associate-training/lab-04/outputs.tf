@@ -13,3 +13,9 @@ output "db_host" {
 output "docker_repository_url" {
   value = aws_ecr_repository.ghost.repository_url
 }
+# output "docker_repository_registry_id" {
+#   value = aws_ecr_repository.ghost.registry_id
+# }
+# output "region" {
+#   value = data.aws_region.current.name
+# }

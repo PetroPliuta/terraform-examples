@@ -9,6 +9,7 @@ provider "aws" {
     }
   }
 }
+data "aws_region" "current" {}
 
 
 # Network stack
@@ -238,7 +239,7 @@ resource "aws_iam_policy" "ghost_app" {
           "secretsmanager:GetSecretValue",
           "kms:Decrypt",
           "rds:DescribeDBInstances",
-          "elasticloadbalancing:DescribeLoadBalancers"
+          "elasticloadbalancing:DescribeLoadBalancers",
         ]
         Effect   = "Allow"
         Resource = "*"
@@ -357,11 +358,11 @@ resource "aws_lb_target_group" "ghost-fargate" {
     "Name" = "ghost-fargate"
   }
 }
-resource "aws_lb_target_group_attachment" "ghost-fargate" {
-  target_group_arn = aws_lb_target_group.ghost-fargate.arn
-  target_id        = aws_lb.ghost-app.id
-  # port             = 80
-}
+# resource "aws_lb_target_group_attachment" "ghost-fargate" {
+#   target_group_arn = aws_lb_target_group.ghost-fargate.arn
+#   target_id        = aws_lb.ghost-app.id
+#   # port             = 80
+# }
 
 resource "aws_lb_listener" "ghost-ec2" {
   load_balancer_arn = aws_lb.ghost-app.arn
@@ -480,13 +481,27 @@ resource "aws_autoscaling_group" "ghost_ec2_pool" {
 
 # Bastion
 
+data "template_file" "bastion_user_data" {
+  template = file("${path.module}/bastion-init-script.sh")
+  vars = {
+    DOCKER_IMAGE = "${aws_ecr_repository.ghost.repository_url}:4.12"
+    REGION = data.aws_region.current.name
+    REGISTRY_ID = aws_ecr_repository.ghost.registry_id
+  }
+}
+
 resource "aws_instance" "bastion" {
   ami                         = data.aws_ami.amazon2-linux-latest.id
   associate_public_ip_address = true
   instance_type               = "t2.micro"
   key_name                    = aws_key_pair.ghost-ec2-pool.key_name
   subnet_id                   = aws_subnet.public_a.id
-  vpc_security_group_ids      = [aws_security_group.bastion.id]
+  vpc_security_group_ids      = [aws_security_group.bastion.id, aws_security_group.fargate_pool.id]
+  iam_instance_profile        = aws_iam_instance_profile.ghost_ecs.id
+
+  user_data = data.template_file.bastion_user_data.rendered
+  user_data_replace_on_change = true
+
   tags = {
     "Name" = "bastion"
   }
@@ -529,6 +544,9 @@ resource "aws_subnet" "private_db_c" {
 
 resource "aws_route_table" "private_rt" {
   vpc_id = aws_vpc.cloudx.id
+  tags = {
+    "Name" = "private_rt"
+  }
 }
 
 resource "aws_route_table_association" "private_rt_db_a" {
@@ -716,7 +734,11 @@ resource "aws_iam_role" "ghost_ecs" {
         Effect = "Allow"
         Sid    = ""
         Principal = {
-          Service = "ec2.amazonaws.com"
+          Service = [
+            "ec2.amazonaws.com",
+            "ecs.amazonaws.com",
+            "ecs-tasks.amazonaws.com"
+          ]
         }
       },
     ]
@@ -728,6 +750,7 @@ resource "aws_iam_role" "ghost_ecs" {
   }
 }
 
+# needed ?
 resource "aws_iam_instance_profile" "ghost_ecs" {
   name = "ghost_ecs"
   role = aws_iam_role.ghost_ecs.name
@@ -744,16 +767,17 @@ resource "aws_security_group" "vpc_endpoint" {
   name   = "vpc_endpoint"
   # TODO: add rules
   ingress {
-    protocol        = "tcp"
+    protocol        = "-1"
     from_port       = 0
     to_port         = 0
     security_groups = [aws_security_group.fargate_pool.id]
   }
   # egress {
-  #   protocol = "tcp"
+  #   protocol  = "-1"
   #   from_port = 0
-  #   to_port = 0
-  #   security_groups = [aws_security_group.]
+  #   to_port   = 0
+  #   # security_groups = [aws_security_group.]
+  #   cidr_blocks = ["0.0.0.0/0"]
   # }
   tags = {
     "Name" = "vpc_endpoint"
@@ -762,47 +786,61 @@ resource "aws_security_group" "vpc_endpoint" {
 
 # SSM, ECR, EFS, S3, CloudWatch and CloudWatch logs
 resource "aws_vpc_endpoint" "ssm" {
-  vpc_id             = aws_vpc.cloudx.id
-  service_name       = "com.amazonaws.us-east-1.ssm"
-  vpc_endpoint_type  = "Interface"
-  security_group_ids = [aws_security_group.vpc_endpoint.id]
+  vpc_id              = aws_vpc.cloudx.id
+  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id]
+  service_name        = "com.amazonaws.us-east-1.ssm"
+  vpc_endpoint_type   = "Interface"
+  security_group_ids  = [aws_security_group.vpc_endpoint.id]
+  private_dns_enabled = true
 }
 resource "aws_vpc_endpoint" "ecr_api" {
-  vpc_id             = aws_vpc.cloudx.id
-  service_name       = "com.amazonaws.us-east-1.ecr.api"
-  vpc_endpoint_type  = "Interface"
-  security_group_ids = [aws_security_group.vpc_endpoint.id]
+  vpc_id              = aws_vpc.cloudx.id
+  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id]
+  service_name        = "com.amazonaws.us-east-1.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  security_group_ids  = [aws_security_group.vpc_endpoint.id]
+  private_dns_enabled = true
 }
 resource "aws_vpc_endpoint" "ecr_dkr" {
-  vpc_id             = aws_vpc.cloudx.id
-  service_name       = "com.amazonaws.us-east-1.ecr.dkr"
-  vpc_endpoint_type  = "Interface"
-  security_group_ids = [aws_security_group.vpc_endpoint.id]
+  vpc_id              = aws_vpc.cloudx.id
+  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id]
+  service_name        = "com.amazonaws.us-east-1.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  security_group_ids  = [aws_security_group.vpc_endpoint.id]
+  private_dns_enabled = true
 }
 resource "aws_vpc_endpoint" "efs" {
-  vpc_id             = aws_vpc.cloudx.id
-  service_name       = "com.amazonaws.us-east-1.elasticfilesystem"
-  vpc_endpoint_type  = "Interface"
-  security_group_ids = [aws_security_group.vpc_endpoint.id]
+  vpc_id              = aws_vpc.cloudx.id
+  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id]
+  service_name        = "com.amazonaws.us-east-1.elasticfilesystem"
+  vpc_endpoint_type   = "Interface"
+  security_group_ids  = [aws_security_group.vpc_endpoint.id]
+  private_dns_enabled = true
 }
 resource "aws_vpc_endpoint" "s3" {
   vpc_id       = aws_vpc.cloudx.id
   service_name = "com.amazonaws.us-east-1.s3"
+  # subnet_ids         = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id]
   # vpc_endpoint_type = "Interface"
   # security_group_ids = [aws_security_group.vpc_endpoint.id]
+  # private_dns_enabled = true
   route_table_ids = [aws_route_table.private_rt.id]
 }
 resource "aws_vpc_endpoint" "cloudwatch" {
-  vpc_id             = aws_vpc.cloudx.id
-  service_name       = "com.amazonaws.us-east-1.monitoring"
-  vpc_endpoint_type  = "Interface"
-  security_group_ids = [aws_security_group.vpc_endpoint.id]
+  vpc_id              = aws_vpc.cloudx.id
+  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id]
+  service_name        = "com.amazonaws.us-east-1.monitoring"
+  vpc_endpoint_type   = "Interface"
+  security_group_ids  = [aws_security_group.vpc_endpoint.id]
+  private_dns_enabled = true
 }
 resource "aws_vpc_endpoint" "cloudwatch_logs" {
-  vpc_id             = aws_vpc.cloudx.id
-  service_name       = "com.amazonaws.us-east-1.logs"
-  vpc_endpoint_type  = "Interface"
-  security_group_ids = [aws_security_group.vpc_endpoint.id]
+  vpc_id              = aws_vpc.cloudx.id
+  subnet_ids          = [aws_subnet.private_a.id, aws_subnet.private_b.id, aws_subnet.private_c.id]
+  service_name        = "com.amazonaws.us-east-1.logs"
+  vpc_endpoint_type   = "Interface"
+  security_group_ids  = [aws_security_group.vpc_endpoint.id]
+  private_dns_enabled = true
 }
 
 
@@ -823,7 +861,7 @@ resource "aws_ecs_cluster" "ghost" {
 data "template_file" "container_definitions" {
   template = file("${path.module}/container_definitions.tpl")
   vars = {
-    ECR_IMAGE = "${aws_ecr_repository.ghost.repository_url}/ghost:4.12"
+    ECR_IMAGE = "${aws_ecr_repository.ghost.repository_url}:4.12"
     DB_URL    = aws_db_instance.ghost.address
     DB_NAME   = aws_db_instance.ghost.db_name
     DB_USER   = aws_db_instance.ghost.username
@@ -854,6 +892,7 @@ resource "aws_ecs_task_definition" "task_def_ghost" {
 }
 
 resource "aws_ecs_service" "ghost" {
+  # count = 0
   name            = "ghost"
   cluster         = aws_ecs_cluster.ghost.id
   task_definition = aws_ecs_task_definition.task_def_ghost.id
