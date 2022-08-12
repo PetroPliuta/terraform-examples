@@ -2,7 +2,7 @@
 
 yum install -y docker
 systemctl start docker
-docker pull ghost:4.12
-docker tag ghost:4.12 ${DOCKER_IMAGE}
+docker pull ghost:latest
+docker tag ghost:latest ${DOCKER_IMAGE}
 aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${REGISTRY_ID}.dkr.ecr.${REGION}.amazonaws.com    
 docker push ${DOCKER_IMAGE}
