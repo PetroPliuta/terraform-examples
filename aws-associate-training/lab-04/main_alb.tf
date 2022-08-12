@@ -62,7 +62,7 @@ resource "aws_lb_target_group" "ghost-fargate" {
   vpc_id      = aws_vpc.cloudx.id
 
   target_type = "ip"
-  # slow_start = 600
+  slow_start = 300
 
   health_check {
     healthy_threshold   = 3
