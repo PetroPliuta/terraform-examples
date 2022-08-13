@@ -43,6 +43,13 @@ resource "aws_launch_template" "ghost" {
   }
 
   user_data = data.local_file.ghost-init-script.content_base64
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      "Name" = "ghost-ec2"
+    }
+  }
 }
 
 

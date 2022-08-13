@@ -12,7 +12,7 @@
     ],
     "mountPoints": [
         {
-            "containerPath": "/var/lib/ghost/content",
+            "containerPath": "${CONTAINER_PATH}",
             "sourceVolume": "ghost_volume"
         }
     ],
