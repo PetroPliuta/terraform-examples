@@ -123,8 +123,8 @@ data "template_file" "container_definitions" {
     DB_USER   = aws_db_instance.ghost.username
     DB_PASS   = var.database_master_password
 
-    # CONTAINER_PATH = "/var/lib/ghost/content"
-    CONTAINER_PATH = "/var/lib/ghost"
+    CONTAINER_PATH = "/var/lib/ghost/content"
+    # CONTAINER_PATH = "/var/lib/ghost"
   }
 }
 

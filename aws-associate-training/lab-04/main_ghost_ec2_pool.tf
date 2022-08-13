@@ -96,7 +96,17 @@ resource "aws_autoscaling_group" "ghost_ec2_pool" {
     time_sleep.wait_efs_mount_target_dns_records_to_propagate,
     aws_db_instance.ghost,
     # instance user_data script reads load balancer DNS name
-    aws_lb.ghost-app
+    aws_lb.ghost-app,
+
+    # trying to fix "efs/db racing" with ecs tasks
+    time_sleep.wait_ecs_service_started
+  ]
+}
+
+resource "time_sleep" "wait_ecs_service_started" {
+  create_duration = "180s"
+  depends_on = [
+    aws_ecs_service.ghost
   ]
 }
 
