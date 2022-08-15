@@ -1,3 +1,29 @@
+resource "aws_security_group" "efs" {
+  name        = "efs"
+  description = "defines access to efs mount points"
+  vpc_id      = aws_vpc.cloudx.id
+  ingress {
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ec2_pool.id, aws_security_group.fargate_pool.id]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = [aws_vpc.cloudx.cidr_block]
+  }
+
+  lifecycle {
+    # Necessary if changing 'name' or 'name_prefix' properties.
+    create_before_destroy = true
+  }
+  tags = {
+    "Name" = "efs"
+  }
+}
+
 # Elastic File System
 
 resource "aws_efs_file_system" "ghost_content" {

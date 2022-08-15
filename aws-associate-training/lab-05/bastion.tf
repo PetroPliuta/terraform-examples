@@ -1,4 +1,28 @@
+resource "aws_security_group" "bastion" {
+  name        = "bastion"
+  description = "allows access to bastion"
+  vpc_id      = aws_vpc.cloudx.id
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
+  lifecycle {
+    # Necessary if changing 'name' or 'name_prefix' properties.
+    create_before_destroy = true
+  }
+  tags = {
+    "Name" = "bastion"
+  }
+}
 
 
 # Bastion

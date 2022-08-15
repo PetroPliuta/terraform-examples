@@ -40,12 +40,12 @@ resource "aws_lb_target_group" "ghost-ec2" {
   protocol    = "HTTP"
   vpc_id      = aws_vpc.cloudx.id
 
-  slow_start = 900
+  slow_start = 300
   health_check {
     healthy_threshold   = 3
-    unhealthy_threshold = 10
+    unhealthy_threshold = 3
     timeout             = 5
-    interval            = 300
+    interval            = 6
   }
 
   lifecycle {
@@ -62,7 +62,7 @@ resource "aws_lb_target_group" "ghost-fargate" {
   vpc_id      = aws_vpc.cloudx.id
 
   target_type = "ip"
-  slow_start = 300
+  slow_start  = 300
 
   health_check {
     healthy_threshold   = 3

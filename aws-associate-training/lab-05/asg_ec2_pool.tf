@@ -1,4 +1,119 @@
+resource "aws_security_group" "ec2_pool" {
+  name        = "ec2_pool"
+  description = "allows access to ec2 instances"
+  vpc_id      = aws_vpc.cloudx.id
 
+  lifecycle {
+    # Necessary if changing 'name' or 'name_prefix' properties.
+    create_before_destroy = true
+  }
+  tags = {
+    "Name" = "ec2_pool"
+  }
+}
+resource "aws_security_group_rule" "rule_1" {
+  security_group_id        = aws_security_group.ec2_pool.id
+  type                     = "ingress"
+  from_port                = 22
+  to_port                  = 22
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.bastion.id
+}
+resource "aws_security_group_rule" "rule_2" {
+  security_group_id = aws_security_group.ec2_pool.id
+  type              = "ingress"
+  from_port         = 2368
+  to_port           = 2368
+  protocol          = "tcp"
+  cidr_blocks       = [aws_vpc.cloudx.cidr_block]
+}
+resource "aws_security_group_rule" "rule_3" {
+  security_group_id        = aws_security_group.ec2_pool.id
+  type                     = "ingress"
+  from_port                = 2368
+  to_port                  = 2368
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.alb.id
+}
+resource "aws_security_group_rule" "rule_1e" {
+  security_group_id = aws_security_group.ec2_pool.id
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+# SSH Key pair
+
+resource "aws_key_pair" "ghost-ec2-pool" {
+  public_key = var.ssh-key
+  key_name   = "ghost-ec2-pool"
+  tags = {
+    Name = "ghost-ec2-pool"
+  }
+}
+
+
+# IAM
+
+resource "aws_iam_policy" "ghost_app" {
+  name = "ghost_app"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "ec2:Describe*",
+          "elasticfilesystem:DescribeFileSystems",
+          "elasticfilesystem:ClientMount",
+          "elasticfilesystem:ClientWrite",
+          "ssm:GetParameter*",
+          "secretsmanager:GetSecretValue",
+          "kms:Decrypt",
+          "rds:DescribeDBInstances",
+          "elasticloadbalancing:DescribeLoadBalancers",
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      },
+    ]
+  })
+
+  tags = {
+    Name = "ghost_app"
+  }
+}
+
+resource "aws_iam_role" "ghost_app" {
+  name = "ghost_app"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Sid    = ""
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+  managed_policy_arns = [aws_iam_policy.ghost_app.arn]
+
+  tags = {
+    Name = "ghost_app"
+  }
+}
+
+resource "aws_iam_instance_profile" "ghost_app" {
+  name = "ghost_app"
+  role = aws_iam_role.ghost_app.name
+  tags = {
+    Name = "ghost_app"
+  }
+}
 
 # Launch Template
 
