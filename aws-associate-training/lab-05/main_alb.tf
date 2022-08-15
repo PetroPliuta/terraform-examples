@@ -40,12 +40,12 @@ resource "aws_lb_target_group" "ghost-ec2" {
   protocol    = "HTTP"
   vpc_id      = aws_vpc.cloudx.id
 
-  slow_start = 600
+  slow_start = 900
   health_check {
     healthy_threshold   = 3
-    unhealthy_threshold = 3
+    unhealthy_threshold = 10
     timeout             = 5
-    interval            = 6
+    interval            = 300
   }
 
   lifecycle {
