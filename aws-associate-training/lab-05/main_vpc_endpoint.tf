@@ -6,8 +6,8 @@ resource "aws_security_group" "vpc_endpoint" {
     protocol        = "-1"
     from_port       = 0
     to_port         = 0
-    security_groups = [aws_security_group.fargate_pool.id, aws_security_group.bastion.id, aws_security_group.ec2_pool.id]
-    # security_groups = [aws_security_group.fargate_pool.id, aws_security_group.bastion.id]
+    # security_groups = [aws_security_group.fargate_pool.id, aws_security_group.bastion.id, aws_security_group.ec2_pool.id]
+    security_groups = [aws_security_group.fargate_pool.id, aws_security_group.bastion.id]
   }
   egress {
     protocol  = "-1"

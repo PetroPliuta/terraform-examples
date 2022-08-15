@@ -24,8 +24,15 @@ data "aws_ami" "amazon2-linux-latest" {
   }
 }
 
-data "local_file" "ghost-init-script" {
-  filename = "${path.module}/files/ghost-init-script.sh"
+# data "local_file" "ghost-init-script" {
+#   filename = "${path.module}/files/ghost-init-script.sh"
+# }
+
+data "template_file" "ghost-init-script" {
+  template = "${path.module}/files/ghost-init-script.sh"
+  vars = {
+    EFS_ID = aws_efs_file_system.ghost_content.id
+  }
 }
 
 resource "aws_launch_template" "ghost" {
@@ -42,7 +49,8 @@ resource "aws_launch_template" "ghost" {
     security_groups             = [aws_security_group.ec2_pool.id]
   }
 
-  user_data = data.local_file.ghost-init-script.content_base64
+  # user_data = data.local_file.ghost-init-script.content_base64
+  user_data = base64encode(data.template_file.ghost-init-script.rendered)
 
   tag_specifications {
     resource_type = "instance"
@@ -91,6 +99,7 @@ resource "aws_autoscaling_group" "ghost_ec2_pool" {
     preferences {
       min_healthy_percentage = 50
     }
+    # triggers = ["launch_template"] # default behaviour
   }
   depends_on = [
     time_sleep.wait_efs_mount_target_dns_records_to_propagate,
