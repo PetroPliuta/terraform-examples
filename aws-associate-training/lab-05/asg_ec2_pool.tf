@@ -144,9 +144,15 @@ data "aws_ami" "amazon2-linux-latest" {
 # }
 
 data "template_file" "ghost-init-script" {
-  template = "${path.module}/files/ghost-init-script.sh"
+  template = file("${path.module}/files/ghost-init-script.sh")
+
   vars = {
-    EFS_ID = aws_efs_file_system.ghost_content.id
+    EFS_ID      = aws_efs_file_system.ghost_content.id
+    LB_DNS_NAME = aws_lb.ghost-app.dns_name
+    DB_URL      = aws_db_instance.ghost.address
+    DB_NAME     = aws_db_instance.ghost.db_name
+    DB_USER     = aws_db_instance.ghost.username
+    DB_PASSWORD = aws_ssm_parameter.db_password.value
   }
 }
 
