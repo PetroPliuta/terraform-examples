@@ -176,7 +176,7 @@ resource "aws_ecs_service" "ghost" {
   }
 
   depends_on = [
-    aws_db_instance.ghost, # conatainer connects to db
+    aws_db_instance.ghost, # container connects to db
     aws_instance.bastion,  # bastion instance creates/pushes Docker image
     aws_vpc_endpoint.efs,
     time_sleep.wait_efs_mount_target_dns_records_to_propagate
