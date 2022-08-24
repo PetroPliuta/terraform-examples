@@ -77,7 +77,10 @@ resource "aws_iam_role" "ghost_ecs" {
             "ecr:BatchGetImage",
             "elasticfilesystem:DescribeFileSystems",
             "elasticfilesystem:ClientMount",
-            "elasticfilesystem:ClientWrite"
+            "elasticfilesystem:ClientWrite",
+            "logs:CreateLogStream",
+            "logs:PutLogEvents",
+            "logs:CreateLogGroup"
           ]
           Effect   = "Allow"
           Resource = "*"
@@ -125,6 +128,8 @@ data "template_file" "container_definitions" {
 
     CONTAINER_PATH = "/var/lib/ghost/content"
     # CONTAINER_PATH = "/var/lib/ghost"
+    awslogs_group  = "ghost-fargate"
+    awslogs_region = data.aws_region.current.name
   }
 }
 
@@ -169,4 +174,11 @@ resource "aws_ecs_service" "ghost" {
     container_name   = "ghost_container"
     container_port   = 2368
   }
+
+  depends_on = [
+    aws_db_instance.ghost, # conatainer connects to db
+    aws_instance.bastion,  # bastion instance creates/pushes Docker image
+    aws_vpc_endpoint.efs,
+    time_sleep.wait_efs_mount_target_dns_records_to_propagate
+  ]
 }
