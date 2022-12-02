@@ -41,7 +41,7 @@ module "eks" {
   version = "~> 18.0"
 
   cluster_name    = "my-cluster"
-  # cluster_version = "1.21"
+  # cluster_version = "1.24"
   subnet_ids = data.aws_subnets.subnets.ids
 
 
